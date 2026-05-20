@@ -387,6 +387,88 @@ pub const TextBuffer = struct {
         self.cached_direct_dirty = false;
     }
 
+    fn appendRawCell(self: *TextBuffer, char: u32, fg: RGBA, bg: RGBA, attributes: u16) TextBufferError!void {
+        const chunk_group = self.allocator.create(ChunkGroup) catch return TextBufferError.OutOfMemory;
+        chunk_group.* = ChunkGroup.init();
+        errdefer {
+            chunk_group.deinit(self.allocator);
+            self.allocator.destroy(chunk_group);
+        }
+
+        const chunk_data = self.allocator.alloc(u32, 1) catch return TextBufferError.OutOfMemory;
+        chunk_data[0] = char;
+
+        const chunk = TextChunk{
+            .chars = chunk_data,
+            .fg = fg,
+            .bg = bg,
+            .attributes = attributes & ATTR_MASK,
+        };
+
+        if (self.current_line >= self.lines.items.len) {
+            self.lines.append(self.allocator, TextLine.init()) catch return TextBufferError.OutOfMemory;
+        }
+
+        const chunk_index = self.lines.items[self.current_line].chunks.items.len;
+        self.lines.items[self.current_line].chunks.append(self.allocator, chunk) catch return TextBufferError.OutOfMemory;
+        chunk_group.addChunkRef(self.allocator, self.current_line, chunk_index) catch return TextBufferError.OutOfMemory;
+        self.chunk_groups.append(self.allocator, chunk_group) catch return TextBufferError.OutOfMemory;
+
+        self.char_count += 1;
+        if (char == '\n') {
+            self.lines.items[self.current_line].width = self.current_line_width;
+            self.current_line_width = 0;
+            self.current_line += 1;
+            if (self.current_line >= self.lines.items.len) {
+                var new_line = TextLine.init();
+                new_line.char_offset = self.char_count;
+                self.lines.append(self.allocator, new_line) catch return TextBufferError.OutOfMemory;
+            }
+        } else {
+            self.current_line_width += 1;
+            self.lines.items[self.current_line].width = self.current_line_width;
+        }
+
+        self.virtual_lines_dirty = true;
+        self.markDirectCacheDirty();
+    }
+
+    pub fn setCell(self: *TextBuffer, index: u32, char: u32, fg: RGBA, bg: RGBA, attributes: u16) TextBufferError!void {
+        self.updateDirectCache();
+
+        var chars = std.ArrayList(u32).init(self.global_allocator);
+        defer chars.deinit();
+        var foregrounds = std.ArrayList(RGBA).init(self.global_allocator);
+        defer foregrounds.deinit();
+        var backgrounds = std.ArrayList(RGBA).init(self.global_allocator);
+        defer backgrounds.deinit();
+        var attrs = std.ArrayList(u16).init(self.global_allocator);
+        defer attrs.deinit();
+
+        try chars.appendSlice(self.cached_direct_chars.items);
+        try foregrounds.appendSlice(self.cached_direct_fg.items);
+        try backgrounds.appendSlice(self.cached_direct_bg.items);
+        try attrs.appendSlice(self.cached_direct_attributes.items);
+
+        const target_index: usize = @intCast(index);
+        while (chars.items.len <= target_index) {
+            try chars.append(' ');
+            try foregrounds.append(RGBA{ 1.0, 1.0, 1.0, 1.0 });
+            try backgrounds.append(RGBA{ 0.0, 0.0, 0.0, 0.0 });
+            try attrs.append(0);
+        }
+
+        chars.items[target_index] = char;
+        foregrounds.items[target_index] = fg;
+        backgrounds.items[target_index] = bg;
+        attrs.items[target_index] = attributes;
+
+        self.reset();
+        for (chars.items, 0..) |cell, i| {
+            try self.appendRawCell(cell, foregrounds.items[i], backgrounds.items[i], attrs.items[i]);
+        }
+    }
+
     pub fn setSelection(self: *TextBuffer, start: u32, end: u32, bgColor: ?RGBA, fgColor: ?RGBA) void {
         self.selection = TextSelection{
             .start = start,

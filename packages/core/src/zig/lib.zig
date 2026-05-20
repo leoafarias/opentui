@@ -380,7 +380,8 @@ export fn setupTerminal(rendererPtr: *renderer.CliRenderer, useAlternateScreen: 
     rendererPtr.setupTerminal(useAlternateScreen);
 }
 
-export fn createTextBuffer(widthMethod: u8) ?*text_buffer.TextBuffer {
+export fn createTextBuffer(length: u32, widthMethod: u8) ?*text_buffer.TextBuffer {
+    _ = length;
     const pool = gp.initGlobalPool(globalArena);
     const wMethod: gwidth.WidthMethod = if (widthMethod == 0) .wcwidth else .unicode;
 
@@ -400,6 +401,10 @@ export fn destroyTextBuffer(tb: *text_buffer.TextBuffer) void {
 
 export fn textBufferGetLength(tb: *text_buffer.TextBuffer) u32 {
     return tb.getLength();
+}
+
+export fn textBufferSetCell(tb: *text_buffer.TextBuffer, index: u32, char_code: u32, fg: [*]const f32, bg: [*]const f32, attr: u16) void {
+    tb.setCell(index, char_code, f32PtrToRGBA(fg), f32PtrToRGBA(bg), attr) catch {};
 }
 
 export fn textBufferReset(tb: *text_buffer.TextBuffer) void {

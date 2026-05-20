@@ -248,7 +248,7 @@ function getOpenTUILib(libPath?: string) {
 
     // TextBuffer functions
     createTextBuffer: {
-      args: ["u8"],
+      args: ["u32", "u8"],
       returns: "ptr",
     },
     destroyTextBuffer: {
@@ -1204,7 +1204,7 @@ class FFIRenderLib implements RenderLib {
   // TextBuffer methods
   public createTextBuffer(widthMethod: WidthMethod): TextBuffer {
     const widthMethodCode = widthMethod === "wcwidth" ? 0 : 1
-    const bufferPtr = this.opentui.symbols.createTextBuffer(widthMethodCode)
+    const bufferPtr = this.opentui.symbols.createTextBuffer(1, widthMethodCode)
     if (!bufferPtr) {
       throw new Error(`Failed to create TextBuffer`)
     }
