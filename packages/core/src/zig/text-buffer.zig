@@ -175,6 +175,12 @@ pub const TextBuffer = struct {
     cached_line_widths: std.ArrayListUnmanaged(u32),
     cached_max_width: u32,
 
+    cached_direct_chars: std.ArrayListUnmanaged(u32),
+    cached_direct_fg: std.ArrayListUnmanaged(RGBA),
+    cached_direct_bg: std.ArrayListUnmanaged(RGBA),
+    cached_direct_attributes: std.ArrayListUnmanaged(u16),
+    cached_direct_dirty: bool,
+
     pool: *gp.GraphemePool,
     graphemes_data: Graphemes,
     display_width: DisplayWidth,
@@ -225,6 +231,18 @@ pub const TextBuffer = struct {
         var cached_line_widths: std.ArrayListUnmanaged(u32) = .{};
         errdefer cached_line_widths.deinit(virtual_lines_allocator);
 
+        var cached_direct_chars: std.ArrayListUnmanaged(u32) = .{};
+        errdefer cached_direct_chars.deinit(internal_allocator);
+
+        var cached_direct_fg: std.ArrayListUnmanaged(RGBA) = .{};
+        errdefer cached_direct_fg.deinit(internal_allocator);
+
+        var cached_direct_bg: std.ArrayListUnmanaged(RGBA) = .{};
+        errdefer cached_direct_bg.deinit(internal_allocator);
+
+        var cached_direct_attributes: std.ArrayListUnmanaged(u16) = .{};
+        errdefer cached_direct_attributes.deinit(internal_allocator);
+
         const first_line = TextLine.init();
         lines.append(internal_allocator, first_line) catch return TextBufferError.OutOfMemory;
 
@@ -250,6 +268,11 @@ pub const TextBuffer = struct {
             .cached_line_starts = cached_line_starts,
             .cached_line_widths = cached_line_widths,
             .cached_max_width = 0,
+            .cached_direct_chars = cached_direct_chars,
+            .cached_direct_fg = cached_direct_fg,
+            .cached_direct_bg = cached_direct_bg,
+            .cached_direct_attributes = cached_direct_attributes,
+            .cached_direct_dirty = true,
             .pool = pool,
             .graphemes_data = graph,
             .display_width = dw,
@@ -291,11 +314,77 @@ pub const TextBuffer = struct {
         self.cached_line_starts = .{};
         self.cached_line_widths = .{};
         self.cached_max_width = 0;
+        self.cached_direct_chars = .{};
+        self.cached_direct_fg = .{};
+        self.cached_direct_bg = .{};
+        self.cached_direct_attributes = .{};
+        self.cached_direct_dirty = true;
         // wrap_width is preserved across resets
         self.virtual_lines_dirty = true;
 
         const first_line = TextLine.init();
         self.lines.append(self.allocator, first_line) catch {};
+    }
+
+    fn markDirectCacheDirty(self: *TextBuffer) void {
+        self.cached_direct_dirty = true;
+    }
+
+    fn resolvedAttributes(self: *const TextBuffer, attributes: u16) u16 {
+        if (attributes & USE_DEFAULT_ATTR != 0) {
+            return self.default_attributes orelse 0;
+        }
+        return attributes & ATTR_MASK;
+    }
+
+    fn appendDirectCell(self: *TextBuffer, char: u32, fg: RGBA, bg: RGBA, attributes: u16) !void {
+        try self.cached_direct_chars.append(self.allocator, char);
+        try self.cached_direct_fg.append(self.allocator, fg);
+        try self.cached_direct_bg.append(self.allocator, bg);
+        try self.cached_direct_attributes.append(self.allocator, attributes);
+    }
+
+    fn updateDirectCache(self: *TextBuffer) void {
+        if (!self.cached_direct_dirty) return;
+
+        self.cached_direct_chars.clearRetainingCapacity();
+        self.cached_direct_fg.clearRetainingCapacity();
+        self.cached_direct_bg.clearRetainingCapacity();
+        self.cached_direct_attributes.clearRetainingCapacity();
+
+        var index: u32 = 0;
+        for (self.lines.items) |line| {
+            for (line.chunks.items) |chunk| {
+                const baseFg = chunk.fg orelse self.default_fg orelse RGBA{ 1.0, 1.0, 1.0, 1.0 };
+                const baseBg = chunk.bg orelse self.default_bg orelse RGBA{ 0.0, 0.0, 0.0, 0.0 };
+                const attributes = self.resolvedAttributes(chunk.attributes);
+
+                for (chunk.chars) |char| {
+                    var fg = baseFg;
+                    var bg = baseBg;
+
+                    if (self.selection) |sel| {
+                        if (index >= sel.start and index < sel.end) {
+                            if (sel.bgColor) |selectionBg| {
+                                bg = selectionBg;
+                                if (sel.fgColor) |selectionFg| {
+                                    fg = selectionFg;
+                                }
+                            } else {
+                                const previousFg = fg;
+                                fg = if (bg[3] > 0) bg else RGBA{ 0.0, 0.0, 0.0, 1.0 };
+                                bg = previousFg;
+                            }
+                        }
+                    }
+
+                    self.appendDirectCell(char, fg, bg, attributes) catch return;
+                    index += 1;
+                }
+            }
+        }
+
+        self.cached_direct_dirty = false;
     }
 
     pub fn setSelection(self: *TextBuffer, start: u32, end: u32, bgColor: ?RGBA, fgColor: ?RGBA) void {
@@ -305,10 +394,12 @@ pub const TextBuffer = struct {
             .bgColor = bgColor,
             .fgColor = fgColor,
         };
+        self.markDirectCacheDirty();
     }
 
     pub fn resetSelection(self: *TextBuffer) void {
         self.selection = null;
+        self.markDirectCacheDirty();
     }
 
     pub fn getSelection(self: *const TextBuffer) ?TextSelection {
@@ -317,20 +408,24 @@ pub const TextBuffer = struct {
 
     pub fn setDefaultFg(self: *TextBuffer, fg: ?RGBA) void {
         self.default_fg = fg;
+        self.markDirectCacheDirty();
     }
 
     pub fn setDefaultBg(self: *TextBuffer, bg: ?RGBA) void {
         self.default_bg = bg;
+        self.markDirectCacheDirty();
     }
 
     pub fn setDefaultAttributes(self: *TextBuffer, attributes: ?u8) void {
         self.default_attributes = attributes;
+        self.markDirectCacheDirty();
     }
 
     pub fn resetDefaults(self: *TextBuffer) void {
         self.default_fg = null;
         self.default_bg = null;
         self.default_attributes = null;
+        self.markDirectCacheDirty();
     }
 
     /// Set the wrap width for text wrapping. null means no wrapping.
@@ -338,6 +433,7 @@ pub const TextBuffer = struct {
         if (self.wrap_width != width) {
             self.wrap_width = width;
             self.virtual_lines_dirty = true;
+            self.markDirectCacheDirty();
         }
     }
 
@@ -346,6 +442,7 @@ pub const TextBuffer = struct {
         if (self.wrap_mode != mode) {
             self.wrap_mode = mode;
             self.virtual_lines_dirty = true;
+            self.markDirectCacheDirty();
         }
     }
 
@@ -652,6 +749,7 @@ pub const TextBuffer = struct {
                 self.allocator.destroy(chunk_group);
             }
             self.chunk_groups.append(self.allocator, chunk_group) catch return TextBufferError.OutOfMemory;
+            self.markDirectCacheDirty();
             return 0;
         }
 
@@ -804,6 +902,7 @@ pub const TextBuffer = struct {
         }
 
         self.chunk_groups.append(self.allocator, chunk_group) catch return TextBufferError.OutOfMemory;
+        self.markDirectCacheDirty();
 
         return cellCount << 1;
     }
@@ -886,12 +985,17 @@ pub const TextBuffer = struct {
             self.selection = null;
         }
 
+        if (selection_changed) {
+            self.markDirectCacheDirty();
+        }
+
         return selection_changed;
     }
 
     pub fn resetLocalSelection(self: *TextBuffer) void {
         self.local_selection = null;
         self.selection = null;
+        self.markDirectCacheDirty();
     }
 
     /// Calculate character positions from local selection coordinates
@@ -1148,6 +1252,7 @@ pub const TextBuffer = struct {
         }
 
         self.chunk_groups.insert(self.allocator, index, new_chunk_group) catch return TextBufferError.OutOfMemory;
+        self.markDirectCacheDirty();
 
         return self.char_count;
     }
@@ -1173,6 +1278,7 @@ pub const TextBuffer = struct {
         _ = self.chunk_groups.orderedRemove(index);
         chunk_group.deinit(self.allocator);
         self.allocator.destroy(chunk_group);
+        self.markDirectCacheDirty();
 
         return self.char_count;
     }
@@ -1212,5 +1318,25 @@ pub const TextBuffer = struct {
             .widths = self.cached_line_widths.items,
             .max_width = self.cached_max_width,
         };
+    }
+
+    pub fn getDirectCharsPtr(self: *TextBuffer) [*]const u32 {
+        self.updateDirectCache();
+        return self.cached_direct_chars.items.ptr;
+    }
+
+    pub fn getDirectFgPtr(self: *TextBuffer) [*]const RGBA {
+        self.updateDirectCache();
+        return self.cached_direct_fg.items.ptr;
+    }
+
+    pub fn getDirectBgPtr(self: *TextBuffer) [*]const RGBA {
+        self.updateDirectCache();
+        return self.cached_direct_bg.items.ptr;
+    }
+
+    pub fn getDirectAttributesPtr(self: *TextBuffer) [*]const u16 {
+        self.updateDirectCache();
+        return self.cached_direct_attributes.items.ptr;
     }
 };

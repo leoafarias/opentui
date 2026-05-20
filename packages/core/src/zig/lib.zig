@@ -469,6 +469,22 @@ export fn textBufferGetLineWidthsPtr(tb: *text_buffer.TextBuffer) [*]const u32 {
     return tb.getCachedLineInfo().widths.ptr;
 }
 
+export fn textBufferGetCharPtr(tb: *text_buffer.TextBuffer) [*]const u32 {
+    return tb.getDirectCharsPtr();
+}
+
+export fn textBufferGetFgPtr(tb: *text_buffer.TextBuffer) [*]const f32 {
+    return @ptrCast(tb.getDirectFgPtr());
+}
+
+export fn textBufferGetBgPtr(tb: *text_buffer.TextBuffer) [*]const f32 {
+    return @ptrCast(tb.getDirectBgPtr());
+}
+
+export fn textBufferGetAttributesPtr(tb: *text_buffer.TextBuffer) [*]const u16 {
+    return tb.getDirectAttributesPtr();
+}
+
 export fn bufferDrawTextBuffer(
     bufferPtr: *buffer.OptimizedBuffer,
     textBufferPtr: *text_buffer.TextBuffer,
