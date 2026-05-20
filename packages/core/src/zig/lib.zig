@@ -15,8 +15,8 @@ pub const CliRenderer = renderer.CliRenderer;
 pub const Terminal = terminal.Terminal;
 pub const RGBA = buffer.RGBA;
 
-const DART_ABI_VERSION: u32 = 1;
-const DART_BUILD_INFO = "opentui-core 0.1.24 dart-abi 1";
+const DART_ABI_VERSION: u32 = 2;
+const DART_BUILD_INFO = "opentui-core 0.1.24 dart-abi 2";
 var dart_last_error: [*:0]const u8 = "";
 
 export fn otui_dart_abi_version() u32 {
@@ -459,6 +459,14 @@ export fn textBufferGetLineInfoDirect(tb: *text_buffer.TextBuffer, lineStartsPtr
     @memcpy(lineWidthsPtr[0..line_info.widths.len], line_info.widths);
 
     return line_info.max_width;
+}
+
+export fn textBufferGetLineStartsPtr(tb: *text_buffer.TextBuffer) [*]const u32 {
+    return tb.getCachedLineInfo().starts.ptr;
+}
+
+export fn textBufferGetLineWidthsPtr(tb: *text_buffer.TextBuffer) [*]const u32 {
+    return tb.getCachedLineInfo().widths.ptr;
 }
 
 export fn bufferDrawTextBuffer(
