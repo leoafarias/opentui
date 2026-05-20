@@ -154,6 +154,9 @@ fn buildTargetFromQuery(
         .root_module = module,
         .linkage = .dynamic,
     });
+    if (target.result.os.tag == .macos) {
+        target_output.headerpad_max_install_names = true;
+    }
 
     const target_name = try createTargetName(b.allocator, target.result);
     defer b.allocator.free(target_name);

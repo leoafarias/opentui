@@ -22,7 +22,7 @@ func NewRenderer(width, height uint32) *Renderer {
 		return nil
 	}
 	
-	ptr := C.createRenderer(C.uint32_t(width), C.uint32_t(height))
+	ptr := C.createRenderer(C.uint32_t(width), C.uint32_t(height), C.bool(false))
 	if ptr == nil {
 		return nil
 	}

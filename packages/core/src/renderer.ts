@@ -1172,7 +1172,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       this.flushStdoutCache(this._splitHeight, true)
     }
 
-    this.lib.destroyRenderer(this.rendererPtr)
+    this.lib.destroyRenderer(this.rendererPtr, this._useAlternateScreen, this._splitHeight)
   }
 
   private startRenderLoop(): void {

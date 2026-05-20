@@ -15,6 +15,26 @@ pub const CliRenderer = renderer.CliRenderer;
 pub const Terminal = terminal.Terminal;
 pub const RGBA = buffer.RGBA;
 
+const DART_ABI_VERSION: u32 = 1;
+const DART_BUILD_INFO = "opentui-core 0.1.24 dart-abi 1";
+var dart_last_error: [*:0]const u8 = "";
+
+export fn otui_dart_abi_version() u32 {
+    return DART_ABI_VERSION;
+}
+
+export fn otui_dart_build_info() [*:0]const u8 {
+    return DART_BUILD_INFO;
+}
+
+export fn otui_dart_last_error() [*:0]const u8 {
+    return dart_last_error;
+}
+
+export fn otui_dart_clear_error() void {
+    dart_last_error = "";
+}
+
 export fn setLogCallback(callback: ?*const fn (level: u8, msgPtr: [*]const u8, msgLen: usize) callconv(.C) void) void {
     logger.setLogCallback(callback);
 }
@@ -50,7 +70,9 @@ export fn setUseThread(rendererPtr: *renderer.CliRenderer, useThread: bool) void
     rendererPtr.setUseThread(useThread);
 }
 
-export fn destroyRenderer(rendererPtr: *renderer.CliRenderer) void {
+export fn destroyRenderer(rendererPtr: *renderer.CliRenderer, useAlternateScreen: bool, splitHeight: u32) void {
+    _ = useAlternateScreen;
+    _ = splitHeight;
     rendererPtr.destroy();
 }
 

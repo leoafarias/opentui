@@ -25,8 +25,14 @@ typedef struct {
 // RGBA color type - array of 4 floats [r, g, b, a]
 typedef float RGBA[4];
 
+// Dart package ABI validation functions
+uint32_t otui_dart_abi_version(void);
+const char* otui_dart_build_info(void);
+const char* otui_dart_last_error(void);
+void otui_dart_clear_error(void);
+
 // Renderer management functions
-CliRenderer* createRenderer(uint32_t width, uint32_t height);
+CliRenderer* createRenderer(uint32_t width, uint32_t height, bool testing);
 void setUseThread(CliRenderer* renderer, bool useThread);
 void destroyRenderer(CliRenderer* renderer, bool useAlternateScreen, uint32_t splitHeight);
 void setBackgroundColor(CliRenderer* renderer, const float* color);

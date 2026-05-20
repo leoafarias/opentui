@@ -26,7 +26,7 @@ function getOpenTUILib(libPath?: string) {
       returns: "ptr",
     },
     destroyRenderer: {
-      args: ["ptr"],
+      args: ["ptr", "bool", "u32"],
       returns: "void",
     },
     setUseThread: {
@@ -553,7 +553,7 @@ export interface LineInfo {
 
 export interface RenderLib {
   createRenderer: (width: number, height: number, options?: { testing: boolean }) => Pointer | null
-  destroyRenderer: (renderer: Pointer) => void
+  destroyRenderer: (renderer: Pointer, useAlternateScreen?: boolean, splitHeight?: number) => void
   setUseThread: (renderer: Pointer, useThread: boolean) => void
   setBackgroundColor: (renderer: Pointer, color: RGBA) => void
   setRenderOffset: (renderer: Pointer, offset: number) => void
@@ -823,8 +823,8 @@ class FFIRenderLib implements RenderLib {
     return this.opentui.symbols.createRenderer(width, height, options.testing)
   }
 
-  public destroyRenderer(renderer: Pointer): void {
-    this.opentui.symbols.destroyRenderer(renderer)
+  public destroyRenderer(renderer: Pointer, useAlternateScreen = false, splitHeight = 0): void {
+    this.opentui.symbols.destroyRenderer(renderer, useAlternateScreen, splitHeight)
   }
 
   public setUseThread(renderer: Pointer, useThread: boolean) {
